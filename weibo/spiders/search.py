@@ -13,6 +13,7 @@ from weibo.items import WeiboItem
 
 
 class SearchSpider(scrapy.Spider):
+    page_number = 1
     name = 'search'
     allowed_domains = ['weibo.com']
     settings = get_project_settings()
@@ -102,38 +103,50 @@ class SearchSpider(scrapy.Spider):
         page_count = len(response.xpath('//ul[@class="s-scroll"]/li'))
         if is_empty:
             print('当前页面搜索结果为空')
-        elif page_count < self.further_threshold:
+        else: # page_count < self.further_threshold:
             # 解析当前页面
             for weibo in self.parse_weibo(response):
                 self.check_environment()
                 yield weibo
             next_url = response.xpath(
                 '//a[@class="next"]/@href').extract_first()
+            # if page_count >= 50:
+            #     page_count = 50
+            # next_url = response.xpath(
+            #     '//a[@class="next"]/@href').extract_first()
+            # while SearchSpider.page_number <= page_count:
+            #     next_url = next_url[:-1]
+            #     next_url = self.base_url + next_url + str(SearchSpider.page_number)
+            #     SearchSpider.page_number += 1
+            #     yield scrapy.Request(url=next_url,
+            #                          callback=self.parse_page,
+            #                          meta={'keyword': keyword})
             if next_url:
                 next_url = self.base_url + next_url
                 yield scrapy.Request(url=next_url,
                                      callback=self.parse_page,
                                      meta={'keyword': keyword})
-        else:
-            start_date = datetime.strptime(self.start_date, '%Y-%m-%d')
-            end_date = datetime.strptime(self.end_date, '%Y-%m-%d')
-            while start_date <= end_date:
-                start_str = start_date.strftime('%Y-%m-%d') + '-0'
-                start_date = start_date + timedelta(days=1)
-                end_str = start_date.strftime('%Y-%m-%d') + '-0'
-                url = base_url + self.weibo_type
-                url += self.contain_type
-                url += '&timescope=custom:{}:{}&page=1'.format(
-                    start_str, end_str)
-                # 获取一天的搜索结果
-                yield scrapy.Request(url=url,
-                                     callback=self.parse_by_day,
-                                     meta={
-                                         'base_url': base_url,
-                                         'keyword': keyword,
-                                         'province': province,
-                                         'date': start_str[:-2]
-                                     })
+
+        # else:
+        #     start_date = datetime.strptime(self.start_date, '%Y-%m-%d')
+        #     end_date = datetime.strptime(self.end_date, '%Y-%m-%d')
+        #     while start_date <= end_date:
+        #         start_str = start_date.strftime('%Y-%m-%d') + '-0'
+        #         start_date = start_date + timedelta(days=1)
+        #         end_str = start_date.strftime('%Y-%m-%d') + '-0'
+        #         url = base_url + self.weibo_type
+        #         url += self.contain_type
+        #         url += '&timescope=custom:{}:{}&page=1'.format(
+        #             start_str, end_str)
+        #         # 获取一天的搜索结果
+        #         yield scrapy.Request(url=url,
+        #                              callback=self.parse_by_day,
+        #                              meta={
+        #                                  'base_url': base_url,
+        #                                  'keyword': keyword,
+        #                                  'province': province,
+        #                                  'date': start_str[:-2]
+        #                              })
 
     def parse_by_day(self, response):
         """以天为单位筛选"""
@@ -266,7 +279,7 @@ class SearchSpider(scrapy.Spider):
                                      })
 
     def parse_page(self, response):
-        """解析一页搜索结果的信息"""
+        """解析一页搜索结果的信息(each result page)"""
         keyword = response.meta.get('keyword')
         is_empty = response.xpath(
             '//div[@class="card card-no-result s-pt20b40"]')
@@ -346,6 +359,8 @@ class SearchSpider(scrapy.Spider):
     def parse_weibo(self, response):
         """解析网页中的微博信息"""
         keyword = response.meta.get('keyword')
+
+        # for each weibo post
         for sel in response.xpath("//div[@class='card-wrap']"):
             info = sel.xpath(
                 "div[@class='card']/div[@class='card-feed']/div[@class='content']/div[@class='info']"
@@ -353,14 +368,9 @@ class SearchSpider(scrapy.Spider):
             if info:
                 weibo = WeiboItem()
                 weibo['id'] = sel.xpath('@mid').extract_first()
-                weibo['bid'] = sel.xpath(
-                    './/p[@class="from"]/a[1]/@href').extract_first(
-                    ).split('/')[-1].split('?')[0]
-                weibo['user_id'] = info[0].xpath(
-                    'div[2]/a/@href').extract_first().split('?')[0].split(
-                        '/')[-1]
-                weibo['screen_name'] = info[0].xpath(
-                    'div[2]/a/@nick-name').extract_first()
+                weibo['bid'] = bid_processing(sel)
+                weibo['user_id'] = info[0].xpath('div[2]/a/@href').extract_first().split('?')[0].split('/')[-1]
+                weibo['screen_name'] = info[0].xpath('div[2]/a/@nick-name').extract_first()
                 txt_sel = sel.xpath('.//p[@class="txt"]')[0]
                 retweet_sel = sel.xpath('.//div[@class="card-comment"]')
                 retweet_txt_sel = ''
@@ -425,10 +435,7 @@ class SearchSpider(scrapy.Spider):
                 attitudes_count = re.findall(r'\d+.*', attitudes_count)
                 weibo['attitudes_count'] = attitudes_count[
                     0] if attitudes_count else '0'
-                created_at = sel.xpath(
-                    './/p[@class="from"]/a[1]/text()').extract_first(
-                    ).replace(' ', '').replace('\n', '').split('前')[0]
-                weibo['created_at'] = util.standardize_date(created_at)
+                weibo['created_at'] = util.standardize_date(created_at_processing(sel))
                 source = sel.xpath('.//p[@class="from"]/a[2]/text()'
                                    ).extract_first()
                 weibo['source'] = source if source else ''
@@ -519,3 +526,52 @@ class SearchSpider(scrapy.Spider):
                     weibo['retweet_id'] = retweet['id']
                 print(weibo)
                 yield {'weibo': weibo, 'keyword': keyword}
+
+def bid_processing(sel):
+    # bid
+    bid = sel.xpath('.//p[@class="from"]/a[1]/@href')
+
+    # check whether sel.xpath('.//p[@class="from"]/a[1]/@href') returns None or a Selector instance
+    if bid is not None:
+        elem = bid.extract_first()
+        if elem is not None:
+            # extract bid
+            return  elem.split('/')[-1].split('?')[0]
+
+        else:
+            # use other xpaths
+            bid_other = sel.xpath('.//div[@class="from"]/a[1]/@href')
+
+            # check whether sel.xpath('.//div[@class="from"]/a[1]/@href') returns a None or a selector instance
+            if bid_other is not None:
+                elem_other = bid_other.extract_first()
+                if elem_other is not None:
+                    return elem_other.split('/')[-1].split('?')[0]
+
+            else:
+                # set bid to None
+                return None
+
+
+def created_at_processing(sel):
+    # elem_list
+    elem_list = sel.xpath('.//p[@class="from"]/a[1]/text()')
+    # check whether list is empty
+    if len(elem_list) != 0:
+        created_at = elem_list.extract_first().replace(' ', '').replace('\n', '').split('前')[0]
+    else:
+        # use another xpath
+        elem_list_other = sel.xpath('.//div[@class="from"]/a[1]/text()')
+
+        # check whether list is empty
+        if len(elem_list_other) != 0:
+            created_at = elem_list_other.extract_first().replace(' ', '').replace('\n', '').split('前')[0]
+
+        else:
+            created_at = None
+
+    return created_at
+
+
+
+
