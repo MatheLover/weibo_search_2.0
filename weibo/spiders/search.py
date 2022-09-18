@@ -103,7 +103,7 @@ class SearchSpider(scrapy.Spider):
         page_count = len(response.xpath('//ul[@class="s-scroll"]/li'))
         if is_empty:
             print('当前页面搜索结果为空')
-        else: # page_count < self.further_threshold:
+        elif page_count < self.further_threshold:
             # 解析当前页面
             for weibo in self.parse_weibo(response):
                 self.check_environment()
@@ -127,26 +127,26 @@ class SearchSpider(scrapy.Spider):
                                      callback=self.parse_page,
                                      meta={'keyword': keyword})
 
-        # else:
-        #     start_date = datetime.strptime(self.start_date, '%Y-%m-%d')
-        #     end_date = datetime.strptime(self.end_date, '%Y-%m-%d')
-        #     while start_date <= end_date:
-        #         start_str = start_date.strftime('%Y-%m-%d') + '-0'
-        #         start_date = start_date + timedelta(days=1)
-        #         end_str = start_date.strftime('%Y-%m-%d') + '-0'
-        #         url = base_url + self.weibo_type
-        #         url += self.contain_type
-        #         url += '&timescope=custom:{}:{}&page=1'.format(
-        #             start_str, end_str)
-        #         # 获取一天的搜索结果
-        #         yield scrapy.Request(url=url,
-        #                              callback=self.parse_by_day,
-        #                              meta={
-        #                                  'base_url': base_url,
-        #                                  'keyword': keyword,
-        #                                  'province': province,
-        #                                  'date': start_str[:-2]
-        #                              })
+        else:
+            start_date = datetime.strptime(self.start_date, '%Y-%m-%d')
+            end_date = datetime.strptime(self.end_date, '%Y-%m-%d')
+            while start_date <= end_date:
+                start_str = start_date.strftime('%Y-%m-%d') + '-0'
+                start_date = start_date + timedelta(days=1)
+                end_str = start_date.strftime('%Y-%m-%d') + '-0'
+                url = base_url + self.weibo_type
+                url += self.contain_type
+                url += '&timescope=custom:{}:{}&page=1'.format(
+                    start_str, end_str)
+                # 获取一天的搜索结果
+                yield scrapy.Request(url=url,
+                                     callback=self.parse_by_day,
+                                     meta={
+                                         'base_url': base_url,
+                                         'keyword': keyword,
+                                         'province': province,
+                                         'date': start_str[:-2]
+                                     })
 
     def parse_by_day(self, response):
         """以天为单位筛选"""
