@@ -532,7 +532,7 @@ def bid_processing(sel):
     bid = sel.xpath('.//p[@class="from"]/a[1]/@href')
 
     # check whether sel.xpath('.//p[@class="from"]/a[1]/@href') returns None or a Selector instance
-    if bid is not None:
+    if len(bid) != 0:
         elem = bid.extract_first()
         if elem is not None:
             # extract bid
@@ -543,7 +543,7 @@ def bid_processing(sel):
             bid_other = sel.xpath('.//div[@class="from"]/a[1]/@href')
 
             # check whether sel.xpath('.//div[@class="from"]/a[1]/@href') returns a None or a selector instance
-            if bid_other is not None:
+            if len(bid_other) != 0:
                 elem_other = bid_other.extract_first()
                 if elem_other is not None:
                     return elem_other.split('/')[-1].split('?')[0]
